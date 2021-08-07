@@ -69,14 +69,22 @@ namespace PaZword.Core.Services.Icons
                     StorageFile storageFile = await fileOpenPicker.PickSingleFileAsync();
                     if (storageFile != null)
                     {
-                        using (IRandomAccessStream fileStream = await storageFile.OpenAsync(FileAccessMode.ReadWrite))
+                        using (IRandomAccessStream fileStream = await storageFile.OpenAsync(FileAccessMode.Read))
                         {
-                            BitmapImage bitmapImage = new BitmapImage();
-                            await bitmapImage.SetSourceAsync(fileStream);
+                            IBuffer buffer = new Windows.Storage.Streams.Buffer((uint)fileStream.Size);
+                            await fileStream.ReadAsync(buffer, (uint)fileStream.Size, InputStreamOptions.None);
+                            InMemoryRandomAccessStream randomAccessStream = new InMemoryRandomAccessStream();
+                            await randomAccessStream.WriteAsync(buffer);
 
-                            WriteableBitmap image = new WriteableBitmap(bitmapImage.PixelWidth, bitmapImage.PixelHeight);
-                            fileStream.Seek(0);
-                            await image.SetSourceAsync(fileStream);
+                            BitmapDecoder decoder = await BitmapDecoder.CreateAsync(randomAccessStream);
+                            var pixelData = await decoder.GetPixelDataAsync(BitmapPixelFormat.Rgba8, BitmapAlphaMode.Premultiplied, new BitmapTransform(), ExifOrientationMode.IgnoreExifOrientation, ColorManagementMode.DoNotColorManage);
+                            byte[] imageData = pixelData.DetachPixelData();
+
+                            WriteableBitmap image = new WriteableBitmap((int)decoder.PixelWidth, (int)decoder.PixelHeight);
+                            Stream pixelStream = image.PixelBuffer.AsStream();
+
+                            pixelStream.Seek(0, SeekOrigin.Begin);
+                            pixelStream.Write(imageData, 0, imageData.Length);
 
                             if (image.PixelWidth > Constants.AccountIconSize + 50)
                             {
